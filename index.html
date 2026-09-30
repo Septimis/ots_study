@@ -154,9 +154,39 @@ legend{padding:0;width:100%}
   .tbar{position:static;border:0}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* password gate */
+html.locked header.mast, html.locked main{display:none !important}
+#gate{display:none}
+html.locked #gate{display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px;background:var(--paper)}
+.gate-card{width:100%;max-width:400px;background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:28px 26px;font-family:var(--sans);box-shadow:0 6px 24px rgba(0,0,0,.08)}
+.gate-card h1{margin:0 0 6px;font-size:1.3rem;line-height:1.2}
+.gate-card p{margin:0 0 18px;color:var(--muted);font-size:.93rem;line-height:1.45}
+.gate-card label{display:block;font-weight:600;font-size:.9rem;margin-bottom:6px}
+.gate-card input{width:100%;font:inherit;font-size:1rem;padding:10px 12px;border:1px solid var(--rule);border-radius:8px;background:var(--paper);color:var(--ink)}
+.gate-card button{margin-top:14px;width:100%;font:600 1rem var(--sans);padding:11px 14px;border:0;border-radius:8px;background:var(--accent);color:var(--accent-ink);cursor:pointer}
+.gate-err{min-height:1.3em;margin:10px 0 0;color:var(--bad);font-weight:600;font-size:.88rem}
 </style>
+<script>
+/* Password gate: hide content immediately if the auth cookie is missing (prevents a flash of content). */
+(function(){
+  var ok=false;
+  try{ ok=document.cookie.split('; ').some(function(c){return c==='site_auth=1';}); }catch(e){}
+  if(!ok) document.documentElement.classList.add('locked');
+})();
+</script>
 </head>
 <body>
+<div id="gate" role="dialog" aria-labelledby="gate-title">
+  <form class="gate-card" id="gate-form" autocomplete="off">
+    <h1 id="gate-title">Password required</h1>
+    <p>Enter the password to view this study guide. You'll only need to do this once every 30 days on this browser.</p>
+    <label for="gate-pw">Password</label>
+    <input type="password" id="gate-pw" required autofocus>
+    <button type="submit">Unlock</button>
+    <div class="gate-err" id="gate-err" role="alert" aria-live="polite"></div>
+  </form>
+</div>
 <header class="mast">
   <div class="mast-in">
     <h1>Leadership Studies: Study Guide and Practice Tests</h1>
@@ -861,6 +891,44 @@ document.getElementById('gen-btn').addEventListener('click',()=>{
   buildTest('custom-'+Date.now(), customQuiz, picked, 'Quiz ('+n+' questions)', desc, false);
   customQuiz.scrollIntoView({behavior:'smooth',block:'start'});
 });
+</script>
+<script>
+/* Password gate logic. To change the password, replace PASSWORD_SHA256 with the
+   SHA-256 hex digest of the new password (e.g. run: printf 'newpass' | sha256sum). */
+(function(){
+  var PASSWORD_SHA256='3836b8b881d90a6250a668edb71a69ac5132c25be17a25d992e41d380e2e939a';
+  var COOKIE_NAME='site_auth', COOKIE_DAYS=30;
+  var root=document.documentElement;
+  var form=document.getElementById('gate-form'), pw=document.getElementById('gate-pw'), err=document.getElementById('gate-err');
+
+  async function sha256(str){
+    var buf=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.prototype.map.call(new Uint8Array(buf),function(b){return b.toString(16).padStart(2,'0');}).join('');
+  }
+  function setCookie(){
+    var exp=new Date(Date.now()+COOKIE_DAYS*24*60*60*1000).toUTCString();
+    document.cookie=COOKIE_NAME+'=1; expires='+exp+'; path=/; SameSite=Lax'+(location.protocol==='https:'?'; Secure':'');
+  }
+  form.addEventListener('submit',async function(e){
+    e.preventDefault();
+    err.textContent='';
+    try{
+      if(!(window.crypto&&crypto.subtle)) throw new Error('nocrypto');
+      var h=await sha256(pw.value);
+      if(h===PASSWORD_SHA256){
+        setCookie();
+        root.classList.remove('locked');
+        pw.value='';
+      }else{
+        err.textContent='Incorrect password. Please try again.';
+        pw.select();
+      }
+    }catch(ex){
+      err.textContent='This browser can\u2019t verify the password here. Try opening the site over HTTPS.';
+    }
+  });
+  if(root.classList.contains('locked')) pw.focus();
+})();
 </script>
 </body>
 </html>
